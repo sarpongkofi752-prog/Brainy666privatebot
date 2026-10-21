@@ -1,65 +1,119 @@
-const express = require('express');
-const app = express();
-app.get('/', (req,res)=> res.send('BRAINY666 PRIVATE BOT 0594595912 LIVE'));
-app.listen(process.env.PORT || 10000, ()=> console.log('✅ PORT OPEN'));
-
-const { default: makeWASocket, useMultiFileAuthState, makeCacheableSignalKeyStore, DisconnectReason, Browsers } = require('@whiskeysockets/baileys')
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys')
 const pino = require('pino')
 const fs = require('fs')
 
-const BOT_NUMBER = '233594595912' // 0594595912 BOT
-const ADMIN_NUMBERS = ['233249466393'] // 0249466393 ADMIN / BOSS
+// 🔒 YOUR PRIVATE NUMBERS - ONLY YOU + ADMINS
+const OWNER_NUMBERS = ['233249466393'] // 0249466393 - YOU ONLY OWNER
+const BOT_NUMBER = '233594595912' // 0594595912
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState('./auth')
+    const { state, saveCreds } = await useMultiFileAuthState('session')
+    
     const sock = makeWASocket({
-        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({level:'silent'})) },
-        browser: Browsers.macOS('Chrome'),
-        logger: pino({level:'silent'})
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
+        },
+        logger: pino({ level: "fatal" }),
+        browser: ["Brainy666 Group Private", "Chrome", "1.0"],
+        markOnlineOnConnect: true
     })
-
-    if(!sock.authState.creds.registered) {
-        console.log('⏳ Waiting 8 sec to request code for 0594595912...');
-        await new Promise(r => setTimeout(r, 8000))
-        try {
-            let code = await sock.requestPairingCode(BOT_NUMBER)
-            code = code?.match(/.{1,4}/g)?.join('-') || code
-            console.log(`\n🔥🔥🔥 CODE FOR 0594595912 (BOT): ${code} 🔥🔥🔥\nAdmin 0249466393 will control am\n`);
-        } catch(e) {
-            console.log('Fail:', e.message)
-            setTimeout(startBot, 15000)
-            return
-        }
-    }
 
     sock.ev.on('creds.update', saveCreds)
-    sock.ev.on('connection.update', async (u) => {
-        if(u.connection === 'close') {
-            const r = u.lastDisconnect?.error?.output?.statusCode
-            console.log('Closed', r, u.lastDisconnect?.error?.message)
-            if(r === 401) { try{fs.rmSync('./auth',{recursive:true,force:true})}catch(e){} }
-            setTimeout(startBot, 5000)
+
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+            if (shouldReconnect) startBot()
+        } else if (connection === 'open') {
+            console.log('✅ BRAINY666 GROUP PRIVATE CONNECTED!')
         }
-        if(u.connection === 'open') console.log('✅✅✅ 0594595912 BOT CONNECTED - Admin 0249466393 IS BOSS ✅✅✅')
     })
 
-    sock.ev.on('messages.upsert', async ({messages}) => {
+    sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0]
-        if(!m.message || m.key.fromMe) return
-        const from = m.key.remoteJid
-        const senderNum = from.split('@')[0]
-        const text = (m.message.conversation || m.message.extendedTextMessage?.text || '')?.trim()
-        console.log(`Msg from ${senderNum}: ${text}`)
+        if (!m.message || m.key.fromMe) return
 
-        // PRIVATE - ONLY 0249466393 CAN USE
-        if(!ADMIN_NUMBERS.some(n => senderNum.includes(n))) {
-            console.log(`Blocked non-admin ${senderNum}`)
-            return
+        const remoteJid = m.key.remoteJid
+        const isGroup = remoteJid.endsWith('@g.us')
+        const senderId = isGroup ? m.key.participant : remoteJid
+        const senderNum = senderId ? senderId.replace(/[^0-9]/g, '') : ''
+        const msgBody = m.message.conversation || m.message.extendedTextMessage?.text || ""
+
+        if (!msgBody.startsWith('.')) return
+
+        // 🔒🔒🔒 PRIVATE CHECK - GROUP ADMIN ONLY 🔒🔒🔒
+        let isOwner = OWNER_NUMBERS.some(n => senderNum.includes(n) || n.includes(senderNum))
+        let isAdmin = false
+
+        if (isGroup) {
+            try {
+                const groupMetadata = await sock.groupMetadata(remoteJid)
+                const participants = groupMetadata.participants
+                const senderParticipant = participants.find(p => p.id === senderId)
+                if (senderParticipant) {
+                    isAdmin = senderParticipant.admin === 'admin' || senderParticipant.admin === 'superadmin'
+                }
+                // BLOCK IF NOT ADMIN AND NOT OWNER
+                if (!isAdmin && !isOwner) {
+                    console.log(`🚫 BLOCKED non-admin: ${senderNum} in ${remoteJid}`)
+                    return
+                }
+                console.log(`✅ ALLOWED Admin/Owner: ${senderNum}`)
+            } catch (e) {
+                console.log('Group metadata error:', e)
+                if (!isOwner) return
+            }
+        } else {
+            // PRIVATE CHAT - ONLY OWNER
+            if (!isOwner) {
+                console.log(`🚫 BLOCKED private non-owner: ${senderNum}`)
+                return
+            }
         }
 
-        if(text === '.ping') await sock.sendMessage(from, {text:'🏓 PONG!\nBot: 0594595912\nBoss: 0249466393 (You)\n🔒 Private Mode ON'})
-        if(text === '.alive') await sock.sendMessage(from, {text:'✅ BOT 0594595912 ALIVE\n👑 Controlled by 0249466393'})
-        if(text === '.menu') await sock.sendMessage(from, {text:'*BRAINY666 PRIVATE*\nBot: 0594595912\nBoss: 0249466393\n\nCommands:\n.ping\n.alive\n.menu'})
+        // ✅ COMMANDS - ONLY ADMINS REACH HERE
+        const cmd = msgBody.toLowerCase().trim()
+
+        if (cmd === '.ping' || cmd.startsWith('.ping')) {
+            await sock.sendMessage(remoteJid, { text: `*PONG!* ⚡\n\n✅ Brainy666 Group Private Active\n👑 Admin Only Mode\n📍 Group: ${isGroup ? 'Yes' : 'No'}\n👤 You: ${isAdmin ? 'Admin ✅' : isOwner ? 'Owner 👑' : 'User'}` }, { quoted: m })
+        }
+
+        if (cmd === '.menu' || cmd.startsWith('.menu')) {
+            await sock.sendMessage(remoteJid, { 
+                text: `*BRAINY666 GROUP PRIVATE BOT* 🔒
+
+*OWNER:* 0249466393 (You)
+*BOT:* 0594595912
+
+*🔒 MODE:* Group Admin Only!
+
+*COMMANDS:*
+.ping - Check bot
+.menu - This menu
+.kick @user - Kick (Admin)
+.mute - Mute group
+.unmute - Unmute
+.promote @user - Make admin
+.demote @user - Remove admin
+.tagall - Tag all members
+.hidetag - Hide tag
+
+*✅ Only Group Admins can use me!*
+Non-admins are blocked!`
+            }, { quoted: m })
+        }
+
+        if (cmd.startsWith('.kick')) {
+            if (!isGroup) return
+            const mentioned = m.message.extendedTextMessage?.contextInfo?.mentionedJid
+            if (mentioned) {
+                await sock.groupParticipantsUpdate(remoteJid, mentioned, "remove")
+                await sock.sendMessage(remoteJid, { text: `✅ Kicked by Admin` }, { quoted: m })
+            }
+        }
     })
 }
+
 startBot()
