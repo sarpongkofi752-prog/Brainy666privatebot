@@ -2,12 +2,10 @@
   "name": "brainy666-private-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "scripts": { "start": "node index.js" },
   "dependencies": {
     "@whiskeysockets/baileys": "6.5.0",
     "pino": "^8.16.0",
-    "qrcode-terminal": "^0.12.0"
+    "express": "^4.18.2"
   }
 }
