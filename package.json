@@ -1,11 +1,13 @@
 {
-  "name": "brainy666-private-bot",
+  "name": "brainy666-group-private",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": { "start": "node index.js" },
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.5.0",
-    "pino": "^8.16.0",
+    "@whiskeysockets/baileys": "^6.7.0",
+    "pino": "^8.17.2",
     "express": "^4.18.2"
   }
 }
