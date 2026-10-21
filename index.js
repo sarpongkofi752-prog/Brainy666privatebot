@@ -1,12 +1,9 @@
-const { default: makeWASocket, useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers, DisconnectReason } = require('@whiskeysockets/baileys')
+const { default: makeWASocket, useMultiFileAuthState, makeCacheableSignalKeyStore, DisconnectReason, Browsers } = require('@whiskeysockets/baileys')
 const pino = require('pino')
-const fs = require('fs')
 
-// === CONFIG - CHANGE THIS ===
-const ADMIN_NUMBERS = ['233594595912'] // Your number only! No + , just country code + number
-const PRIVATE_MODE = true // true = only admin can use
+const ADMIN_NUMBERS = ['233594595912', '233249466393']
+const BOT_NUMBER = '233249466393'
 const BOT_NAME = 'BRAINY666 PRIVATE'
-// ============================
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('./auth')
@@ -18,60 +15,70 @@ async function startBot() {
         },
         browser: Browsers.macOS('Chrome'),
         logger: pino({level:'silent'}),
-        printQRInTerminal: false
+        markOnlineOnConnect: true
     })
 
-    // Pairing code link - if no auth file
+    // Request pairing code ONLY if not registered
     if(!sock.authState.creds.registered) {
-        const phoneNumber = ADMIN_NUMBERS[0] // Your private bot number
-        console.log(`Requesting pairing code for ${phoneNumber}...`)
+        console.log('⏳ NOT REGISTERED - Waiting 5 seconds to request pairing code for 0249466393...')
         setTimeout(async () => {
             try {
-                const code = await sock.requestPairingCode(phoneNumber)
-                console.log(`\n🔥 PAIRING CODE: ${code}\nGo to WhatsApp > Linked Devices > Link with phone number > Enter code\n`)
-            } catch(e){ console.log('Error:', e) }
-        }, 3000)
+                console.log('📲 Requesting pairing code now...')
+                let code = await sock.requestPairingCode(BOT_NUMBER)
+                code = code?.match(/.{1,4}/g)?.join('-') || code
+                console.log(`\n============================\n🔥 PAIRING CODE FOR 0249466393: ${code}\n============================\nOn 0249466393 phone:\nWhatsApp > Settings > Linked Devices > Link a device > Link with phone number\nEnter: ${code}\n============================\n`)
+            } catch(e) {
+                console.log('❌ Pairing failed:', e.message)
+                console.log('Retrying in 10 seconds...')
+                setTimeout(() => startBot(), 10000)
+            }
+        }, 5000)
     }
 
     sock.ev.on('creds.update', saveCreds)
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update
         if(connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
-            if(shouldReconnect) startBot()
-        } else if(connection === 'open') {
-            console.log(`✅ ${BOT_NAME} CONNECTED - PRIVATE MODE ON 🔒`)
+            const reason = lastDisconnect?.error?.output?.statusCode
+            console.log('Connection closed, reason:', reason, lastDisconnect?.error?.message)
+            if(reason !== DisconnectReason.loggedOut) {
+                console.log('Reconnecting...')
+                setTimeout(startBot, 3000)
+            } else {
+                console.log('Logged out - delete auth folder manually')
+            }
+        }
+        if(connection === 'open') {
+            console.log(`✅✅✅ ${BOT_NAME} CONNECTED SUCCESS - 0249466393 LIVE PRIVATE MODE 🔒✅✅✅`)
         }
     })
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0]
         if(!m.message || m.key.fromMe) return
-        
         const from = m.key.remoteJid
         const senderNum = from.split('@')[0]
-        const isGroup = from.endsWith('@g.us')
-        const text = m.message.conversation || m.message.extendedTextMessage?.text || ''
+        const text = (m.message.conversation || m.message.extendedTextMessage?.text || '').trim()
 
-        // === PRIVATE MODE CHECK ===
-        if(PRIVATE_MODE) {
-            const isAdmin = ADMIN_NUMBERS.some(num => senderNum.includes(num) || from.includes(num))
-            if(!isAdmin) {
-                console.log(`❌ Blocked non-admin: ${senderNum} said: ${text}`)
-                return // Ignore non-admins
-            }
+        // PRIVATE MODE
+        const isAdmin = ADMIN_NUMBERS.some(n => senderNum.includes(n) || from.includes(n) || text.includes(n))
+        // For testing, allow all first then restrict - comment next 4 lines if you want test
+        const checkAdmin = ADMIN_NUMBERS.some(n => senderNum.includes(n))
+        if(!checkAdmin) {
+            console.log(`Blocked non-admin ${senderNum}: ${text}`)
+            return
         }
 
-        // === YOUR COMMANDS (only admin can reach here) ===
         if(text.toLowerCase() === '.ping') {
-            await sock.sendMessage(from, { text: `🏓 Pong! ${BOT_NAME} Private Mode Active 🔒\nOnly you fit use me boss!` })
+            await sock.sendMessage(from, { text: `🏓 PONG! ${BOT_NAME}\n📱 0249466393 Private\n🔒 Only Admin can use\n👑 You be boss!` })
         }
-        
+        if(text.toLowerCase() === '.alive') {
+            await sock.sendMessage(from, { text: `✅ ${BOT_NAME} ALIVE\n📱 0249466393\n🔒 Private Mode ON` })
+        }
         if(text.toLowerCase() === '.menu') {
-            await sock.sendMessage(from, { text: `*${BOT_NAME} - PRIVATE BOT*\n\n.menu - Show this\n.ping - Test bot\n.alive - Bot alive?\n\n🔒 Only admin: ${ADMIN_NUMBERS.join(', ')}` })
+            await sock.sendMessage(from, { text: `*${BOT_NAME}*\n.ping\n.alive\n.menu\n\n🔒 Private for 0249466393` })
         }
-
         console.log(`[PRIVATE] ${senderNum}: ${text}`)
     })
 }
